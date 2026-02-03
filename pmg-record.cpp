@@ -7,6 +7,7 @@
 #include <QCompleter>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
+#include <QDockWidget>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMenu>
@@ -26,6 +27,7 @@ static bool rename_replay_enabled = true;
 static bool user_confirm = true;
 static bool auto_remux = false;
 static bool hide_non_record_controls = true;
+static bool capture_mode = true;
 static std::map<obs_output_t *, std::vector<std::string>> output_files;
 static std::string filename_format;
 
@@ -496,6 +498,17 @@ static void apply_controls_visibility()
 	QPushButton *modeSwitch = main_window->findChild<QPushButton *>("modeSwitch");
 	if (modeSwitch)
 		modeSwitch->setVisible(!hide_non_record_controls);
+
+	QDockWidget *scenesDock = main_window->findChild<QDockWidget *>("scenesDock");
+	if (scenesDock)
+		scenesDock->setVisible(!capture_mode);
+
+	QDockWidget *transitionsDock = main_window->findChild<QDockWidget *>("transitionsDock");
+	if (transitionsDock)
+		transitionsDock->setVisible(!capture_mode);
+
+	if (capture_mode && obs_frontend_preview_program_mode_active())
+		obs_frontend_set_preview_program_mode(false);
 }
 
 void frontend_event(obs_frontend_event event, void *param)
@@ -508,6 +521,10 @@ void frontend_event(obs_frontend_event event, void *param)
 	case OBS_FRONTEND_EVENT_REPLAY_BUFFER_STARTED:
 		loadOutputs();
 		break;
+	case OBS_FRONTEND_EVENT_STUDIO_MODE_ENABLED:
+		if (capture_mode)
+			obs_frontend_set_preview_program_mode(false);
+		break;
 	case OBS_FRONTEND_EVENT_PROFILE_CHANGED:
 	case OBS_FRONTEND_EVENT_FINISHED_LOADING: {
 		config_t *config = obs_frontend_get_profile_config();
@@ -516,11 +533,13 @@ void frontend_event(obs_frontend_event event, void *param)
 			config_set_default_bool(config, "PMGRecord", "RenameReplay", true);
 			config_set_default_bool(config, "PMGRecord", "UserConfirm", true);
 			config_set_default_bool(config, "PMGRecord", "HideNonRecordControls", true);
+			config_set_default_bool(config, "PMGRecord", "CaptureMode", true);
 			rename_record_enabled = config_get_bool(config, "PMGRecord", "RenameRecord");
 			rename_replay_enabled = config_get_bool(config, "PMGRecord", "RenameReplay");
 			user_confirm = config_get_bool(config, "PMGRecord", "UserConfirm");
 			auto_remux = config_get_bool(config, "PMGRecord", "AutoRemux");
 			hide_non_record_controls = config_get_bool(config, "PMGRecord", "HideNonRecordControls");
+			capture_mode = config_get_bool(config, "PMGRecord", "CaptureMode");
 			const char *ff = config_get_string(config, "PMGRecord", "FilenameFormat");
 			if (ff)
 				filename_format = ff;
@@ -544,12 +563,14 @@ void save_config()
 		config_set_string(config, "PMGRecord", "FilenameFormat", filename_format.c_str());
 		config_set_bool(config, "PMGRecord", "AutoRemux", auto_remux);
 		config_set_bool(config, "PMGRecord", "HideNonRecordControls", hide_non_record_controls);
+		config_set_bool(config, "PMGRecord", "CaptureMode", capture_mode);
 	}
 	config_save(config);
-	blog(LOG_INFO, "[PMG Record] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s",
+	blog(LOG_INFO,
+	     "[PMG Record] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s capture_mode=%s",
 	     rename_record_enabled ? "true" : "false", rename_replay_enabled ? "true" : "false",
 	     user_confirm ? "true" : "false", auto_remux ? "true" : "false",
-	     hide_non_record_controls ? "true" : "false");
+	     hide_non_record_controls ? "true" : "false", capture_mode ? "true" : "false");
 }
 
 void hooked(void *data, calldata_t *calldata)
@@ -630,6 +651,12 @@ bool obs_module_load()
 			apply_controls_visibility();
 		});
 	hideControlsAction->setCheckable(true);
+	auto captureModeAction = menu->addAction(QString::fromUtf8(obs_module_text("CaptureMode")), [] {
+		capture_mode = !capture_mode;
+		save_config();
+		apply_controls_visibility();
+	});
+	captureModeAction->setCheckable(true);
 
 	menu->addSeparator();
 	menu->addAction(QString::fromUtf8("PMG Record (v0.1.0)"));
@@ -637,12 +664,14 @@ bool obs_module_load()
 			[] { QDesktopServices::openUrl(QUrl("https://exeldro.com")); });
 	action->setMenu(menu);
 	QObject::connect(menu, &QMenu::aboutToShow,
-			 [recordAction, replayAction, remuxAction, confirmAction, hideControlsAction] {
+			 [recordAction, replayAction, remuxAction, confirmAction, hideControlsAction,
+			  captureModeAction] {
 				 recordAction->setChecked(rename_record_enabled);
 				 replayAction->setChecked(rename_replay_enabled);
 				 confirmAction->setChecked(user_confirm);
 				 remuxAction->setChecked(auto_remux);
 				 hideControlsAction->setChecked(hide_non_record_controls);
+				 captureModeAction->setChecked(capture_mode);
 			 });
 	return true;
 }
