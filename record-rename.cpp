@@ -7,8 +7,10 @@
 #include <QCompleter>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
+#include <QLabel>
 #include <QMainWindow>
 #include <QMenu>
+#include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QTimer>
@@ -411,11 +413,50 @@ void unloadOutputs()
 	obs_enum_outputs(loadOutput, &unload);
 }
 
+static void add_pmg_logo(QMainWindow *main_window)
+{
+	if (main_window->findChild<QLabel *>("pmgLogo"))
+		return;
+
+	QPushButton *recordButton = main_window->findChild<QPushButton *>("recordButton");
+	if (!recordButton)
+		return;
+
+	QLayout *layout = recordButton->parentWidget() ? recordButton->parentWidget()->layout() : nullptr;
+	if (!layout)
+		return;
+
+	char *logo_path = obs_module_file("images/pmg-logo.svg");
+	if (!logo_path)
+		return;
+
+	QPixmap pixmap(logo_path);
+	bfree(logo_path);
+
+	if (pixmap.isNull())
+		return;
+
+	QPixmap scaled = pixmap.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+	QLabel *label = new QLabel(recordButton->parentWidget());
+	label->setObjectName("pmgLogo");
+	label->setPixmap(scaled);
+	label->setAlignment(Qt::AlignCenter);
+
+	QBoxLayout *box = qobject_cast<QBoxLayout *>(layout);
+	if (box)
+		box->insertWidget(0, label);
+	else
+		layout->addWidget(label);
+}
+
 static void apply_controls_visibility()
 {
 	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
 	if (!main_window)
 		return;
+
+	add_pmg_logo(main_window);
 
 	QPushButton *streamButton = main_window->findChild<QPushButton *>("streamButton");
 	if (streamButton)
