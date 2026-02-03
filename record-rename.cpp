@@ -465,8 +465,33 @@ static void apply_controls_visibility()
 	QPushButton *virtualCamButton = main_window->findChild<QPushButton *>("virtualCamButton");
 	if (!virtualCamButton)
 		virtualCamButton = main_window->findChild<QPushButton *>("vcamButton");
-	if (virtualCamButton)
+	if (virtualCamButton) {
 		virtualCamButton->setVisible(!hide_non_record_controls);
+		QWidget *container = virtualCamButton->parentWidget();
+		if (container && container->layout()) {
+			QLayout *parentLayout = container->layout();
+			for (int i = 0; i < parentLayout->count(); i++) {
+				QLayout *sub = parentLayout->itemAt(i)->layout();
+				if (!sub)
+					continue;
+				bool hasVcam = false;
+				for (int j = 0; j < sub->count(); j++) {
+					if (sub->itemAt(j)->widget() == virtualCamButton) {
+						hasVcam = true;
+						break;
+					}
+				}
+				if (hasVcam) {
+					for (int j = 0; j < sub->count(); j++) {
+						QWidget *w = sub->itemAt(j)->widget();
+						if (w)
+							w->setVisible(!hide_non_record_controls);
+					}
+					break;
+				}
+			}
+		}
+	}
 
 	QPushButton *modeSwitch = main_window->findChild<QPushButton *>("modeSwitch");
 	if (modeSwitch)
