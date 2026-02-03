@@ -690,6 +690,9 @@ RenameFileDialog::RenameFileDialog(QWidget *parent, std::string title) : QDialog
 	QVBoxLayout *layout = new QVBoxLayout;
 	setLayout(layout);
 
+	QLabel *titleLabel = new QLabel(QString::fromUtf8(title), this);
+	layout->addWidget(titleLabel);
+
 	userText = new QLineEdit(this);
 	layout->addWidget(userText);
 
