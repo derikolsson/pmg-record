@@ -6,8 +6,8 @@ else()
   cmake_minimum_required(VERSION 3.18)
 endif()
 
-project(record-rename VERSION 0.1.3)
-set(PROJECT_FULL_NAME "Record Rename")
+project(pmg-record VERSION 0.1.0)
+set(PROJECT_FULL_NAME "PMG Record")
 
 # Set new UUIDs when you start to create a new plugin.
 set(MACOS_PACKAGE_UUID "3E29ECD4-91DD-46C8-9AAB-A1CCEEB4D5D4")
@@ -18,8 +18,8 @@ add_library(${PROJECT_NAME} MODULE)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/version.h)
 
 target_sources(${PROJECT_NAME} PRIVATE
-	record-rename.hpp
-	record-rename.cpp
+	pmg-record.hpp
+	pmg-record.cpp
 	version.h)
 
 if(BUILD_OUT_OF_TREE)

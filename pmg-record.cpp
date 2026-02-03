@@ -1,5 +1,5 @@
 #include "obs-websocket-api.h"
-#include "record-rename.hpp"
+#include "pmg-record.hpp"
 #include "version.h"
 #include <media-io/media-remux.h>
 #include <obs-frontend-api.h>
@@ -41,16 +41,16 @@ obs_websocket_vendor vendor = nullptr;
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_AUTHOR("Exeldro");
-OBS_MODULE_USE_DEFAULT_LOCALE("record-rename", "en-US")
+OBS_MODULE_USE_DEFAULT_LOCALE("pmg-record", "en-US")
 
 MODULE_EXPORT const char *obs_module_description(void)
 {
-	return "Record Rename by Exeldro\nAdapted for Post Media Group (v0.1.0)";
+	return "PMG Record\nBased on Record Rename by Exeldro";
 }
 
 MODULE_EXPORT const char *obs_module_name(void)
 {
-	return obs_module_text("RecordRename");
+	return obs_module_text("PMGRecord");
 }
 
 std::string hook_format(std::string format)
@@ -293,11 +293,11 @@ void ask_rename_file(std::string path)
 	}
 	bool autoRemux = config_get_bool(obs_frontend_get_profile_config(), "Video", "AutoRemux");
 	if (autoRemux) {
-		blog(LOG_INFO, "[Record Rename] AutoRemux is enabled, skipping rename.");
+		blog(LOG_INFO, "[PMG Record] AutoRemux is enabled, skipping rename.");
 		return;
 	}
 	if (!os_file_exists(path.c_str())) {
-		blog(LOG_ERROR, "[Record Rename] File not found: %s", path.c_str());
+		blog(LOG_ERROR, "[PMG Record] File not found: %s", path.c_str());
 		return;
 	}
 	obs_queue_task(OBS_TASK_UI, ask_rename_file_UI, (void *)bstrdup(path.c_str()), false);
@@ -512,16 +512,16 @@ void frontend_event(obs_frontend_event event, void *param)
 	case OBS_FRONTEND_EVENT_FINISHED_LOADING: {
 		config_t *config = obs_frontend_get_profile_config();
 		if (config) {
-			config_set_default_bool(config, "RecordRename", "RenameRecord", true);
-			config_set_default_bool(config, "RecordRename", "RenameReplay", true);
-			config_set_default_bool(config, "RecordRename", "UserConfirm", true);
-			config_set_default_bool(config, "RecordRename", "HideNonRecordControls", true);
-			rename_record_enabled = config_get_bool(config, "RecordRename", "RenameRecord");
-			rename_replay_enabled = config_get_bool(config, "RecordRename", "RenameReplay");
-			user_confirm = config_get_bool(config, "RecordRename", "UserConfirm");
-			auto_remux = config_get_bool(config, "RecordRename", "AutoRemux");
-			hide_non_record_controls = config_get_bool(config, "RecordRename", "HideNonRecordControls");
-			const char *ff = config_get_string(config, "RecordRename", "FilenameFormat");
+			config_set_default_bool(config, "PMGRecord", "RenameRecord", true);
+			config_set_default_bool(config, "PMGRecord", "RenameReplay", true);
+			config_set_default_bool(config, "PMGRecord", "UserConfirm", true);
+			config_set_default_bool(config, "PMGRecord", "HideNonRecordControls", true);
+			rename_record_enabled = config_get_bool(config, "PMGRecord", "RenameRecord");
+			rename_replay_enabled = config_get_bool(config, "PMGRecord", "RenameReplay");
+			user_confirm = config_get_bool(config, "PMGRecord", "UserConfirm");
+			auto_remux = config_get_bool(config, "PMGRecord", "AutoRemux");
+			hide_non_record_controls = config_get_bool(config, "PMGRecord", "HideNonRecordControls");
+			const char *ff = config_get_string(config, "PMGRecord", "FilenameFormat");
 			if (ff)
 				filename_format = ff;
 		}
@@ -538,15 +538,15 @@ void save_config()
 {
 	config_t *config = obs_frontend_get_profile_config();
 	if (config) {
-		config_set_bool(config, "RecordRename", "RenameRecord", rename_record_enabled);
-		config_set_bool(config, "RecordRename", "RenameReplay", rename_replay_enabled);
-		config_set_bool(config, "RecordRename", "UserConfirm", user_confirm);
-		config_set_string(config, "RecordRename", "FilenameFormat", filename_format.c_str());
-		config_set_bool(config, "RecordRename", "AutoRemux", auto_remux);
-		config_set_bool(config, "RecordRename", "HideNonRecordControls", hide_non_record_controls);
+		config_set_bool(config, "PMGRecord", "RenameRecord", rename_record_enabled);
+		config_set_bool(config, "PMGRecord", "RenameReplay", rename_replay_enabled);
+		config_set_bool(config, "PMGRecord", "UserConfirm", user_confirm);
+		config_set_string(config, "PMGRecord", "FilenameFormat", filename_format.c_str());
+		config_set_bool(config, "PMGRecord", "AutoRemux", auto_remux);
+		config_set_bool(config, "PMGRecord", "HideNonRecordControls", hide_non_record_controls);
 	}
 	config_save(config);
-	blog(LOG_INFO, "[Record Rename] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s",
+	blog(LOG_INFO, "[PMG Record] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s",
 	     rename_record_enabled ? "true" : "false", rename_replay_enabled ? "true" : "false",
 	     user_confirm ? "true" : "false", auto_remux ? "true" : "false",
 	     hide_non_record_controls ? "true" : "false");
@@ -577,7 +577,7 @@ static QTimer *timer;
 
 bool obs_module_load()
 {
-	blog(LOG_INFO, "[Record Rename] loaded version %s", PROJECT_VERSION);
+	blog(LOG_INFO, "[PMG Record] loaded version %s", PROJECT_VERSION);
 
 	obs_frontend_add_event_callback(frontend_event, nullptr);
 	signal_handler_connect(obs_get_signal_handler(), "source_create", source_create, nullptr);
@@ -587,7 +587,7 @@ bool obs_module_load()
 	QObject::connect(timer, &QTimer::timeout, []() { loadOutputs(); });
 	timer->start();
 
-	QAction *action = static_cast<QAction *>(obs_frontend_add_tools_menu_qaction(obs_module_text("RecordRename")));
+	QAction *action = static_cast<QAction *>(obs_frontend_add_tools_menu_qaction(obs_module_text("PMGRecord")));
 	QMenu *menu = new QMenu();
 	auto recordAction = menu->addAction(QString::fromUtf8(obs_module_text("Record")), [] {
 		rename_record_enabled = !rename_record_enabled;
@@ -632,10 +632,9 @@ bool obs_module_load()
 	hideControlsAction->setCheckable(true);
 
 	menu->addSeparator();
-	menu->addAction(QString::fromUtf8("Record Rename (" PROJECT_VERSION ")"),
-			[] { QDesktopServices::openUrl(QUrl("https://obsproject.com/forum/resources/record-rename.2134/")); });
-	menu->addAction(QString::fromUtf8("By Exeldro"), [] { QDesktopServices::openUrl(QUrl("https://exeldro.com")); });
-	menu->addAction(QString::fromUtf8("Adapted for Post Media Group (v0.1.0)"));
+	menu->addAction(QString::fromUtf8("PMG Record (v0.1.0)"));
+	menu->addAction(QString::fromUtf8("based on Record Rename 0.1.3 by Exeldro"),
+			[] { QDesktopServices::openUrl(QUrl("https://exeldro.com")); });
 	action->setMenu(menu);
 	QObject::connect(menu, &QMenu::aboutToShow,
 			 [recordAction, replayAction, remuxAction, confirmAction, hideControlsAction] {
@@ -664,7 +663,7 @@ void vendor_set_filename(obs_data_t *request_data, obs_data_t *response_data, vo
 
 void obs_module_post_load()
 {
-	vendor = obs_websocket_register_vendor("record-rename");
+	vendor = obs_websocket_register_vendor("pmg-record");
 	if (!vendor)
 		return;
 	obs_websocket_vendor_register_request(vendor, "set_filename", vendor_set_filename, nullptr);

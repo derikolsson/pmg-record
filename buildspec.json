@@ -78,6 +78,6 @@
             "qtVersion": 6
         }
     },
-    "name": "record-rename",
-    "version": "0.1.3"
+    "name": "pmg-record",
+    "version": "0.1.0"
 }
