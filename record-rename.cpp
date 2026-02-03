@@ -9,6 +9,7 @@
 #include <QDialogButtonBox>
 #include <QMainWindow>
 #include <QMenu>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -22,6 +23,7 @@ static bool rename_record_enabled = true;
 static bool rename_replay_enabled = true;
 static bool user_confirm = true;
 static bool auto_remux = false;
+static bool hide_non_record_controls = true;
 static std::map<obs_output_t *, std::vector<std::string>> output_files;
 static std::string filename_format;
 
@@ -409,6 +411,27 @@ void unloadOutputs()
 	obs_enum_outputs(loadOutput, &unload);
 }
 
+static void apply_controls_visibility()
+{
+	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+	if (!main_window)
+		return;
+
+	QPushButton *streamButton = main_window->findChild<QPushButton *>("streamButton");
+	if (streamButton)
+		streamButton->setVisible(!hide_non_record_controls);
+
+	QPushButton *virtualCamButton = main_window->findChild<QPushButton *>("virtualCamButton");
+	if (!virtualCamButton)
+		virtualCamButton = main_window->findChild<QPushButton *>("vcamButton");
+	if (virtualCamButton)
+		virtualCamButton->setVisible(!hide_non_record_controls);
+
+	QPushButton *modeSwitch = main_window->findChild<QPushButton *>("modeSwitch");
+	if (modeSwitch)
+		modeSwitch->setVisible(!hide_non_record_controls);
+}
+
 void frontend_event(obs_frontend_event event, void *param)
 {
 	UNUSED_PARAMETER(param);
@@ -426,15 +449,18 @@ void frontend_event(obs_frontend_event event, void *param)
 			config_set_default_bool(config, "RecordRename", "RenameRecord", true);
 			config_set_default_bool(config, "RecordRename", "RenameReplay", true);
 			config_set_default_bool(config, "RecordRename", "UserConfirm", true);
+			config_set_default_bool(config, "RecordRename", "HideNonRecordControls", true);
 			rename_record_enabled = config_get_bool(config, "RecordRename", "RenameRecord");
 			rename_replay_enabled = config_get_bool(config, "RecordRename", "RenameReplay");
 			user_confirm = config_get_bool(config, "RecordRename", "UserConfirm");
 			auto_remux = config_get_bool(config, "RecordRename", "AutoRemux");
+			hide_non_record_controls = config_get_bool(config, "RecordRename", "HideNonRecordControls");
 			const char *ff = config_get_string(config, "RecordRename", "FilenameFormat");
 			if (ff)
 				filename_format = ff;
 		}
 		loadOutputs();
+		apply_controls_visibility();
 		break;
 	}
 	default:
@@ -451,10 +477,13 @@ void save_config()
 		config_set_bool(config, "RecordRename", "UserConfirm", user_confirm);
 		config_set_string(config, "RecordRename", "FilenameFormat", filename_format.c_str());
 		config_set_bool(config, "RecordRename", "AutoRemux", auto_remux);
+		config_set_bool(config, "RecordRename", "HideNonRecordControls", hide_non_record_controls);
 	}
 	config_save(config);
-	blog(LOG_INFO, "[Record Rename] Config saved: %s %s %s %s", rename_record_enabled ? "true" : "false",
-	     rename_replay_enabled ? "true" : "false", user_confirm ? "true" : "false", auto_remux ? "true" : "false");
+	blog(LOG_INFO, "[Record Rename] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s",
+	     rename_record_enabled ? "true" : "false", rename_replay_enabled ? "true" : "false",
+	     user_confirm ? "true" : "false", auto_remux ? "true" : "false",
+	     hide_non_record_controls ? "true" : "false");
 }
 
 void hooked(void *data, calldata_t *calldata)
@@ -527,18 +556,28 @@ bool obs_module_load()
 		save_config();
 	});
 	remuxAction->setCheckable(true);
+	menu->addSeparator();
+	auto hideControlsAction =
+		menu->addAction(QString::fromUtf8(obs_module_text("HideNonRecordControls")), [] {
+			hide_non_record_controls = !hide_non_record_controls;
+			save_config();
+			apply_controls_visibility();
+		});
+	hideControlsAction->setCheckable(true);
 
 	menu->addSeparator();
 	menu->addAction(QString::fromUtf8("Record Rename (" PROJECT_VERSION ")"),
 			[] { QDesktopServices::openUrl(QUrl("https://obsproject.com/forum/resources/record-rename.2134/")); });
 	menu->addAction(QString::fromUtf8("By Exeldro"), [] { QDesktopServices::openUrl(QUrl("https://exeldro.com")); });
 	action->setMenu(menu);
-	QObject::connect(menu, &QMenu::aboutToShow, [recordAction, replayAction, remuxAction, confirmAction] {
-		recordAction->setChecked(rename_record_enabled);
-		replayAction->setChecked(rename_replay_enabled);
-		confirmAction->setChecked(user_confirm);
-		remuxAction->setChecked(auto_remux);
-	});
+	QObject::connect(menu, &QMenu::aboutToShow,
+			 [recordAction, replayAction, remuxAction, confirmAction, hideControlsAction] {
+				 recordAction->setChecked(rename_record_enabled);
+				 replayAction->setChecked(rename_replay_enabled);
+				 confirmAction->setChecked(user_confirm);
+				 remuxAction->setChecked(auto_remux);
+				 hideControlsAction->setChecked(hide_non_record_controls);
+			 });
 	return true;
 }
 
