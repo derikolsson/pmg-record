@@ -45,7 +45,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("record-rename", "en-US")
 
 MODULE_EXPORT const char *obs_module_description(void)
 {
-	return obs_module_text("Description");
+	return "Record Rename by Exeldro\nAdapted for Post Media Group (v0.1.0)";
 }
 
 MODULE_EXPORT const char *obs_module_name(void)
@@ -635,6 +635,7 @@ bool obs_module_load()
 	menu->addAction(QString::fromUtf8("Record Rename (" PROJECT_VERSION ")"),
 			[] { QDesktopServices::openUrl(QUrl("https://obsproject.com/forum/resources/record-rename.2134/")); });
 	menu->addAction(QString::fromUtf8("By Exeldro"), [] { QDesktopServices::openUrl(QUrl("https://exeldro.com")); });
+	menu->addAction(QString::fromUtf8("Adapted for Post Media Group (v0.1.0)"));
 	action->setMenu(menu);
 	QObject::connect(menu, &QMenu::aboutToShow,
 			 [recordAction, replayAction, remuxAction, confirmAction, hideControlsAction] {
