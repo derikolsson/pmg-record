@@ -8,6 +8,7 @@
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDockWidget>
+#include <QTabBar>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMenu>
@@ -17,6 +18,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <string>
+#include <dlfcn.h>
 #include <util/config-file.h>
 #include <util/dstr.h>
 #include <util/platform.h>
@@ -28,6 +30,9 @@ static bool user_confirm = true;
 static bool auto_remux = false;
 static bool hide_non_record_controls = true;
 static bool capture_mode = true;
+static bool lock_docks = true;
+static bool capture_layout_applied = false;
+static bool need_set_vertical = false;
 static std::map<obs_output_t *, std::vector<std::string>> output_files;
 static std::string filename_format;
 
@@ -444,12 +449,55 @@ static void add_pmg_logo(QMainWindow *main_window)
 	label->setObjectName("pmgLogo");
 	label->setPixmap(scaled);
 	label->setAlignment(Qt::AlignCenter);
+	label->setContentsMargins(0, 12, 0, 12);
 
 	QBoxLayout *box = qobject_cast<QBoxLayout *>(layout);
 	if (box)
 		box->insertWidget(0, label);
 	else
 		layout->addWidget(label);
+}
+
+static config_t *get_user_or_global_config()
+{
+	typedef config_t *(*get_user_config_fn)(void);
+	auto fn = (get_user_config_fn)dlsym(RTLD_DEFAULT, "obs_frontend_get_user_config");
+	if (fn) {
+		config_t *c = fn();
+		if (c)
+			return c;
+	}
+	return obs_frontend_get_global_config();
+}
+
+static void apply_record_button_style(bool recording)
+{
+	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+	if (!main_window)
+		return;
+	QPushButton *recordButton = main_window->findChild<QPushButton *>("recordButton");
+	if (!recordButton)
+		return;
+	if (recording)
+		recordButton->setStyleSheet("background-color: #cc0000; color: white;");
+	else
+		recordButton->setStyleSheet("");
+}
+
+static void apply_dock_lock()
+{
+	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+	if (!main_window)
+		return;
+
+	QList<QDockWidget *> docks = main_window->findChildren<QDockWidget *>();
+	for (QDockWidget *dock : docks) {
+		if (lock_docks)
+			dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
+		else
+			dock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable |
+					  QDockWidget::DockWidgetFloatable);
+	}
 }
 
 static void apply_controls_visibility()
@@ -509,6 +557,57 @@ static void apply_controls_visibility()
 
 	if (capture_mode && obs_frontend_preview_program_mode_active())
 		obs_frontend_set_preview_program_mode(false);
+
+	apply_dock_lock();
+}
+
+static void apply_capture_layout()
+{
+	if (!capture_mode || capture_layout_applied)
+		return;
+
+	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+	if (!main_window)
+		return;
+
+	QDockWidget *controlsDock = main_window->findChild<QDockWidget *>("controlsDock");
+	QDockWidget *sourcesDock = main_window->findChild<QDockWidget *>("sourcesDock");
+	QDockWidget *mixerDock = main_window->findChild<QDockWidget *>("mixerDock");
+
+	blog(LOG_INFO, "[PMG Record] Applying capture layout: controlsDock=%p sourcesDock=%p mixerDock=%p",
+	     (void *)controlsDock, (void *)sourcesDock, (void *)mixerDock);
+
+	if (!controlsDock || !sourcesDock)
+		return;
+
+	controlsDock->setVisible(true);
+	controlsDock->setFloating(false);
+	main_window->addDockWidget(Qt::RightDockWidgetArea, controlsDock);
+
+	if (mixerDock) {
+		mixerDock->setVisible(true);
+		mixerDock->setFloating(false);
+		main_window->splitDockWidget(controlsDock, mixerDock, Qt::Vertical);
+	}
+
+	sourcesDock->setVisible(true);
+	sourcesDock->setFloating(false);
+	main_window->tabifyDockWidget(controlsDock, sourcesDock);
+	controlsDock->raise();
+
+	QList<QTabBar *> tabBars = main_window->findChildren<QTabBar *>();
+	for (QTabBar *tb : tabBars) {
+		if (tb->count() >= 2) {
+			tb->setDrawBase(false);
+			tb->setAutoFillBackground(false);
+			QWidget *parent = tb->parentWidget();
+			if (parent)
+				parent->setAutoFillBackground(false);
+		}
+	}
+
+	capture_layout_applied = true;
+	apply_dock_lock();
 }
 
 void frontend_event(obs_frontend_event event, void *param)
@@ -517,6 +616,10 @@ void frontend_event(obs_frontend_event event, void *param)
 	switch (event) {
 	case OBS_FRONTEND_EVENT_RECORDING_STARTED:
 		loadOutputs();
+		apply_record_button_style(true);
+		break;
+	case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
+		apply_record_button_style(false);
 		break;
 	case OBS_FRONTEND_EVENT_REPLAY_BUFFER_STARTED:
 		loadOutputs();
@@ -525,8 +628,21 @@ void frontend_event(obs_frontend_event event, void *param)
 		if (capture_mode)
 			obs_frontend_set_preview_program_mode(false);
 		break;
+	case OBS_FRONTEND_EVENT_EXIT:
+		if (need_set_vertical) {
+			config_t *vc = get_user_or_global_config();
+			if (vc)
+				config_set_bool(vc, "BasicWindow", "VerticalVolControl", true);
+			config_t *pc = obs_frontend_get_profile_config();
+			if (pc)
+				config_set_bool(pc, "PMGRecord", "VerticalVolControlSet", true);
+			need_set_vertical = false;
+			blog(LOG_INFO, "[PMG Record] Set VerticalVolControl=true on exit (takes effect on restart)");
+		}
+		break;
 	case OBS_FRONTEND_EVENT_PROFILE_CHANGED:
 	case OBS_FRONTEND_EVENT_FINISHED_LOADING: {
+		capture_layout_applied = false;
 		config_t *config = obs_frontend_get_profile_config();
 		if (config) {
 			config_set_default_bool(config, "PMGRecord", "RenameRecord", true);
@@ -534,18 +650,23 @@ void frontend_event(obs_frontend_event event, void *param)
 			config_set_default_bool(config, "PMGRecord", "UserConfirm", true);
 			config_set_default_bool(config, "PMGRecord", "HideNonRecordControls", true);
 			config_set_default_bool(config, "PMGRecord", "CaptureMode", true);
+			config_set_default_bool(config, "PMGRecord", "LockDocks", true);
 			rename_record_enabled = config_get_bool(config, "PMGRecord", "RenameRecord");
 			rename_replay_enabled = config_get_bool(config, "PMGRecord", "RenameReplay");
 			user_confirm = config_get_bool(config, "PMGRecord", "UserConfirm");
 			auto_remux = config_get_bool(config, "PMGRecord", "AutoRemux");
 			hide_non_record_controls = config_get_bool(config, "PMGRecord", "HideNonRecordControls");
 			capture_mode = config_get_bool(config, "PMGRecord", "CaptureMode");
+			lock_docks = config_get_bool(config, "PMGRecord", "LockDocks");
 			const char *ff = config_get_string(config, "PMGRecord", "FilenameFormat");
 			if (ff)
 				filename_format = ff;
 		}
+		if (config && !config_get_bool(config, "PMGRecord", "VerticalVolControlSet"))
+			need_set_vertical = true;
 		loadOutputs();
 		apply_controls_visibility();
+		QTimer::singleShot(1000, [] { apply_capture_layout(); });
 		break;
 	}
 	default:
@@ -564,13 +685,15 @@ void save_config()
 		config_set_bool(config, "PMGRecord", "AutoRemux", auto_remux);
 		config_set_bool(config, "PMGRecord", "HideNonRecordControls", hide_non_record_controls);
 		config_set_bool(config, "PMGRecord", "CaptureMode", capture_mode);
+		config_set_bool(config, "PMGRecord", "LockDocks", lock_docks);
 	}
 	config_save(config);
 	blog(LOG_INFO,
-	     "[PMG Record] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s capture_mode=%s",
+	     "[PMG Record] Config saved: record=%s replay=%s confirm=%s remux=%s hide_controls=%s capture_mode=%s lock_docks=%s",
 	     rename_record_enabled ? "true" : "false", rename_replay_enabled ? "true" : "false",
 	     user_confirm ? "true" : "false", auto_remux ? "true" : "false",
-	     hide_non_record_controls ? "true" : "false", capture_mode ? "true" : "false");
+	     hide_non_record_controls ? "true" : "false", capture_mode ? "true" : "false",
+	     lock_docks ? "true" : "false");
 }
 
 void hooked(void *data, calldata_t *calldata)
@@ -653,10 +776,19 @@ bool obs_module_load()
 	hideControlsAction->setCheckable(true);
 	auto captureModeAction = menu->addAction(QString::fromUtf8(obs_module_text("CaptureMode")), [] {
 		capture_mode = !capture_mode;
+		capture_layout_applied = false;
 		save_config();
 		apply_controls_visibility();
+		if (capture_mode)
+			QTimer::singleShot(500, [] { apply_capture_layout(); });
 	});
 	captureModeAction->setCheckable(true);
+	auto lockDocksAction = menu->addAction(QString::fromUtf8(obs_module_text("LockDocks")), [] {
+		lock_docks = !lock_docks;
+		save_config();
+		apply_dock_lock();
+	});
+	lockDocksAction->setCheckable(true);
 
 	menu->addSeparator();
 	menu->addAction(QString::fromUtf8("PMG Record (v0.1.0)"));
@@ -665,13 +797,14 @@ bool obs_module_load()
 	action->setMenu(menu);
 	QObject::connect(menu, &QMenu::aboutToShow,
 			 [recordAction, replayAction, remuxAction, confirmAction, hideControlsAction,
-			  captureModeAction] {
+			  captureModeAction, lockDocksAction] {
 				 recordAction->setChecked(rename_record_enabled);
 				 replayAction->setChecked(rename_replay_enabled);
 				 confirmAction->setChecked(user_confirm);
 				 remuxAction->setChecked(auto_remux);
 				 hideControlsAction->setChecked(hide_non_record_controls);
 				 captureModeAction->setChecked(capture_mode);
+				 lockDocksAction->setChecked(lock_docks);
 			 });
 	return true;
 }
