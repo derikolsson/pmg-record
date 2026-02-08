@@ -18,7 +18,11 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <string>
+#if defined(_WIN32)
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 #include <util/config-file.h>
 #include <util/dstr.h>
 #include <util/platform.h>
@@ -461,7 +465,11 @@ static void add_pmg_logo(QMainWindow *main_window)
 static config_t *get_user_or_global_config()
 {
 	typedef config_t *(*get_user_config_fn)(void);
+#if defined(_WIN32)
+	auto fn = (get_user_config_fn)GetProcAddress(GetModuleHandle(NULL), "obs_frontend_get_user_config");
+#else
 	auto fn = (get_user_config_fn)dlsym(RTLD_DEFAULT, "obs_frontend_get_user_config");
+#endif
 	if (fn) {
 		config_t *c = fn();
 		if (c)
