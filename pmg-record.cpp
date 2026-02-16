@@ -4,6 +4,7 @@
 #include <media-io/media-remux.h>
 #include <obs-frontend-api.h>
 #include <obs-module.h>
+#include <QAction>
 #include <QCompleter>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
@@ -508,6 +509,25 @@ static void apply_dock_lock()
 	}
 }
 
+static void apply_preview_lock()
+{
+	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
+	if (!main_window)
+		return;
+
+	QAction *lockPreview = main_window->findChild<QAction *>("actionLockPreview");
+	if (!lockPreview)
+		return;
+
+	if (capture_mode && !lockPreview->isChecked()) {
+		lockPreview->setChecked(true);
+		lockPreview->trigger();
+	} else if (!capture_mode && lockPreview->isChecked()) {
+		lockPreview->setChecked(false);
+		lockPreview->trigger();
+	}
+}
+
 static void apply_controls_visibility()
 {
 	QMainWindow *main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
@@ -567,6 +587,7 @@ static void apply_controls_visibility()
 		obs_frontend_set_preview_program_mode(false);
 
 	apply_dock_lock();
+	apply_preview_lock();
 }
 
 static void apply_capture_layout()
