@@ -4,13 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OBS Studio frontend plugin (C++/Qt) that automatically renames recordings and replay buffer saves. Adds a Tools menu to OBS with toggles for rename-on-record, rename-on-replay, user confirmation, filename formatting, and auto-remux to MP4. Also exposes a WebSocket vendor API for external filename control.
+OBS Studio frontend plugin (C++/Qt) that simplifies OBS into a capture-focused tool. Prompts to rename recordings and replay buffer saves, strips the UI down to essentials, and exposes a WebSocket vendor API for external filename control. Based on [Record Rename](https://obsproject.com/forum/resources/record-rename.2134/) by Exeldro.
 
 ## OBS Plugin Documentation
 
-- [OBS Developer Guide](https://obsproject.com/kb/developer-guide)
-- [Getting Started with OBS Studio Development](https://github.com/obsproject/obs-studio/wiki/getting-started-with-obs-studio-development)
 - [OBS Plugin API Reference](https://docs.obsproject.com/plugins)
+- [OBS Developer Guide](https://obsproject.com/kb/developer-guide)
 
 ## Build Commands
 
@@ -22,7 +21,7 @@ Requires: `cmake`, `jq` (install via `brew install cmake jq`).
 ```bash
 ./.github/scripts/build-macos.zsh --skip-build
 ```
-This downloads pre-built deps to `../obs-build-dependencies/` and clones OBS source to `../obs-studio/`. The OBS source build will fail without full Xcode — that's expected, skip it.
+This downloads pre-built deps to `../obs-build-dependencies/` and clones OBS source to `../obs-studio/`. The OBS source build will fail without full Xcode -- that's expected, skip it.
 
 **2. Create cmake config for obs-frontend-api (first time only):**
 
@@ -47,7 +46,7 @@ CMAKE_PREFIX_PATH="$DEPS_DIR" cmake -S . -B build_arm64 -G "Unix Makefiles" \
   -DCMAKE_OSX_SYSROOT="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk" \
   -Wno-dev
 ```
-Note: Use a macOS 15.x SDK (not 26.x) — the pre-built Qt6 deps require the AGL framework which was removed in the macOS 26 SDK.
+Note: Use a macOS 15.x SDK (not 26.x) -- the pre-built Qt6 deps require the AGL framework which was removed in the macOS 26 SDK.
 
 **4. Build:**
 ```bash
@@ -80,10 +79,16 @@ Uses clang-format with 132-column limit (config in `.clang-format`).
 
 ## Architecture
 
-The plugin is ~640 lines in two source files:
+The plugin lives in two source files plus a vendored header:
 
-- **pmg-record.cpp** — All plugin logic: signal handlers, file renaming, remuxing, config, menus, WebSocket API
-- **pmg-record.hpp** — Two Qt dialog classes: `RenameFileDialog` (filename input) and `FilenameFormatDialog` (format string editor with autocomplete)
+- **pmg-record.cpp** -- All plugin logic: signal handlers, file renaming, remuxing, config, menus, UI manipulation, WebSocket API
+- **pmg-record.hpp** -- Two Qt dialog classes: `RenameFileDialog` (filename input) and `FilenameFormatDialog` (format string editor with autocomplete)
+- **obs-websocket-api.h** -- Vendored obs-websocket header for the vendor API (do not modify)
+
+Other key files:
+- **data/locale/en-US.ini** -- All user-facing strings (use `obs_module_text()` to reference them)
+- **data/images/pmg-logo.svg** -- Logo displayed in the controls area
+- **version.h.in** -- CMake template that generates `version.h` with `PROJECT_VERSION`
 
 ### Signal-Driven Pipeline
 
@@ -93,10 +98,21 @@ The plugin is ~640 lines in two source files:
 4. The rename functions apply filename format templates (including `%TITLE`/`%EXECUTABLE` from hooked game/window capture sources), sanitize invalid characters, show a rename dialog (if user confirmation is enabled), and rename the file
 5. If auto-remux is enabled and the file isn't already MP4, a pthread is spawned to remux via `media_remux_job_create()`
 
+### UI Manipulation (Capture Mode)
+
+The plugin heavily manipulates the OBS main window via Qt object names:
+- `apply_controls_visibility()` -- Hides stream/vcam/studio-mode buttons, scenes/transitions docks based on settings
+- `apply_capture_layout()` -- Rearranges docks (controls right, mixer below, sources tabbed) on first load
+- `apply_dock_lock()` -- Disables all dock features (move/close/float) when lock is enabled
+- `apply_record_button_style()` -- Applies red background during recording
+- `add_pmg_logo()` -- Inserts PMG logo above the record button
+
+These find widgets by `objectName` (e.g., `"recordButton"`, `"streamButton"`, `"scenesDock"`). Changes to OBS's internal widget names will break these.
+
 ### Key Patterns
 
 - **Threading:** All UI must go through `obs_queue_task(OBS_TASK_UI, ...)`. Remuxing runs on separate pthreads to avoid blocking.
 - **Split recordings:** The `output_files` map (keyed by `obs_output_t*`) tracks multiple files per output, handled via the "file_changed" signal.
-- **Config persistence:** Settings stored in OBS profile config under `[PMGRecord]` section via `config_get_bool()`/`config_set_bool()`.
-- **WebSocket vendor API:** Registered as "pmg-record" vendor; `vendor_set_filename()` handles external requests to set the next filename with optional `force` flag.
-- **Locale strings:** `data/locale/en-US.ini` — use `obs_module_text()` for all user-facing strings.
+- **Config persistence:** Settings stored in OBS profile config under `[PMGRecord]` section via `config_get_bool()`/`config_set_bool()`. Defaults set in the `OBS_FRONTEND_EVENT_FINISHED_LOADING` handler.
+- **WebSocket vendor API:** Registered as "pmg-record" vendor in `obs_module_post_load()`; `vendor_set_filename()` handles `set_filename` requests with optional `force` flag.
+- **Frontend events:** `frontend_event()` handles profile changes, recording start/stop, studio mode, and exit. It reloads config and re-applies UI state on profile change or finished loading.
