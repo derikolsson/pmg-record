@@ -596,6 +596,14 @@ static void apply_controls_visibility()
 	if (sourcesToolbar)
 		sourcesToolbar->setVisible(!capture_mode);
 
+	QWidget *sourcesList = main_window->findChild<QWidget *>("sources");
+	if (sourcesList)
+		sourcesList->setContextMenuPolicy(capture_mode ? Qt::PreventContextMenu : Qt::CustomContextMenu);
+
+	QWidget *preview = main_window->findChild<QWidget *>("preview");
+	if (preview)
+		preview->setContextMenuPolicy(capture_mode ? Qt::PreventContextMenu : Qt::CustomContextMenu);
+
 	main_window->setAcceptDrops(!capture_mode);
 
 	if (capture_mode && obs_frontend_preview_program_mode_active())
