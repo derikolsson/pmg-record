@@ -843,7 +843,7 @@ bool obs_module_load()
 	lockDocksAction->setCheckable(true);
 
 	menu->addSeparator();
-	menu->addAction(QString::fromUtf8("PMG Record (v0.1.0)"));
+	menu->addAction(QString::fromUtf8("PMG Record (v" PROJECT_VERSION ")"));
 	menu->addAction(QString::fromUtf8("based on Record Rename 0.1.3 by Exeldro"),
 			[] { QDesktopServices::openUrl(QUrl("https://exeldro.com")); });
 	action->setMenu(menu);
