@@ -17,6 +17,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QTimer>
+#include <QToolBar>
 #include <QVBoxLayout>
 #include <string>
 #if defined(_WIN32)
@@ -582,6 +583,20 @@ static void apply_controls_visibility()
 	QDockWidget *transitionsDock = main_window->findChild<QDockWidget *>("transitionsDock");
 	if (transitionsDock)
 		transitionsDock->setVisible(!capture_mode);
+
+	QAction *addSource = main_window->findChild<QAction *>("actionAddSource");
+	if (addSource)
+		addSource->setEnabled(!capture_mode);
+
+	QAction *removeSource = main_window->findChild<QAction *>("actionRemoveSource");
+	if (removeSource)
+		removeSource->setEnabled(!capture_mode);
+
+	QToolBar *sourcesToolbar = main_window->findChild<QToolBar *>("sourcesToolbar");
+	if (sourcesToolbar)
+		sourcesToolbar->setVisible(!capture_mode);
+
+	main_window->setAcceptDrops(!capture_mode);
 
 	if (capture_mode && obs_frontend_preview_program_mode_active())
 		obs_frontend_set_preview_program_mode(false);
